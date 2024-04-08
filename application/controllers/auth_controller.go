@@ -9,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	domain_auth_model "github.com/thuanpham98/go-websocker-server/domain/auth/model"
+	domain_common_modell "github.com/thuanpham98/go-websocker-server/domain/common/model"
 	"github.com/thuanpham98/go-websocker-server/initializers"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -58,7 +59,7 @@ func SignUp(c *gin.Context){
 
 func Login(c *gin.Context){
 	var body struct{
-		Phone string `json:"phone" binding:"required"`
+		Username string `json:"username" binding:"required"`
 		Password string `json:"password" binding:"required"`
 	}
 
@@ -70,23 +71,26 @@ func Login(c *gin.Context){
 	}
 
 	var user domain_auth_model.UserEntity
-	initializers.DB.First(&user,"phone = ?",body.Phone)
+	initializers.DB.First(&user,"phone = ?",body.Username)
 
 	
 	if(user.Id==""){
-
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Invalide user name or password",
-		})
+		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_modell.CommonReponse{
+			Code: 105,
+			Message: "user not found",
+			Data: nil,
+		}})
 		return
 	}
 
 	err:=bcrypt.CompareHashAndPassword([]byte(user.Password),[]byte(body.Password))
 
 	if(err!=nil){
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Invalide user name or password",
-		})
+		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_modell.CommonReponse{
+			Code: 105,
+			Message: "user not found",
+			Data: nil,
+		}})
 		return
 	}
 
@@ -98,11 +102,17 @@ func Login(c *gin.Context){
 	tokenString,err:= token.SignedString([]byte(os.Getenv("PASSWORD_SECRET")))
 
 	if(err!=nil){
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Invalide user name or password",
-		})
+		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_modell.CommonReponse{
+			Code: 105,
+			Message: "user not found",
+			Data: nil,
+		}})
 		return
 	}
 
-	c.JSON(http.StatusOK,gin.H{"token": tokenString})
+	c.JSON(http.StatusOK,gin.H{"data": domain_common_modell.CommonReponse{
+		Code: 0,
+		Message: "success",
+		Data: tokenString,
+	}})
 }

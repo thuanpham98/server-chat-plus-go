@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	amqp "github.com/rabbitmq/amqp091-go"
 	application_controllers "github.com/thuanpham98/go-websocker-server/application/controllers"
@@ -84,19 +85,25 @@ func main() {
 
 	//we need pass hub to out route with roomid
 	app := gin.Default()
+
+    // cors
+     app.Use(cors.Default())
+
+    
+    // version router
     routerVersion := app.Group("/api/v1")
 
-    // auth
+    // auth router
     auth :=routerVersion.Group("/auth")
     auth.POST("/signup",application_controllers.SignUp)
     auth.POST("/login",application_controllers.Login)
 
 
-    // user
+    // user router
     user:= routerVersion.Group("/user")
     user.GET("/:id",application_middlewares.AuthRequire,application_controllers.GetUserInfo)
 
-    // websocket
+    // websocket router
 	app.GET("/ws/:roomId",func(c *gin.Context) {
         fmt.Println("connect")
 		roomId := c.Param("roomId")
