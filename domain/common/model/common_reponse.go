@@ -1,4 +1,4 @@
-package domain_common_modell
+package domain_common_model
 
 type CommonReponse struct {
 	Code int `json:"code"`

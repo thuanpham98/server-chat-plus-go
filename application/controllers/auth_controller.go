@@ -9,8 +9,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	domain_auth_model "github.com/thuanpham98/go-websocker-server/domain/auth/model"
-	domain_common_modell "github.com/thuanpham98/go-websocker-server/domain/common/model"
-	"github.com/thuanpham98/go-websocker-server/initializers"
+	domain_common_model "github.com/thuanpham98/go-websocker-server/domain/common/model"
+	"github.com/thuanpham98/go-websocker-server/infrastructure"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -45,7 +45,7 @@ func SignUp(c *gin.Context){
 		Password: string(hashed),
 
 	}
-	result:=initializers.DB.Create(&user)
+	result:=infrastructure.DB.Create(&user)
 
 	if(result.Error!=nil){
 		c.JSON(http.StatusBadRequest,gin.H{
@@ -71,11 +71,11 @@ func Login(c *gin.Context){
 	}
 
 	var user domain_auth_model.UserEntity
-	initializers.DB.First(&user,"phone = ?",body.Username)
+	infrastructure.DB.First(&user,"phone = ?",body.Username)
 
 	
 	if(user.Id==""){
-		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_modell.CommonReponse{
+		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 105,
 			Message: "user not found",
 			Data: nil,
@@ -86,7 +86,7 @@ func Login(c *gin.Context){
 	err:=bcrypt.CompareHashAndPassword([]byte(user.Password),[]byte(body.Password))
 
 	if(err!=nil){
-		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_modell.CommonReponse{
+		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 105,
 			Message: "user not found",
 			Data: nil,
@@ -102,7 +102,7 @@ func Login(c *gin.Context){
 	tokenString,err:= token.SignedString([]byte(os.Getenv("PASSWORD_SECRET")))
 
 	if(err!=nil){
-		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_modell.CommonReponse{
+		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 105,
 			Message: "user not found",
 			Data: nil,
@@ -110,7 +110,7 @@ func Login(c *gin.Context){
 		return
 	}
 
-	c.JSON(http.StatusOK,gin.H{"data": domain_common_modell.CommonReponse{
+	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
 		Code: 0,
 		Message: "success",
 		Data: tokenString,

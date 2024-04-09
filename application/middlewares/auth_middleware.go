@@ -2,8 +2,6 @@ package application_middlewares
 
 import (
 	"errors"
-	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -12,14 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	domain_auth_model "github.com/thuanpham98/go-websocker-server/domain/auth/model"
-	"github.com/thuanpham98/go-websocker-server/initializers"
+	"github.com/thuanpham98/go-websocker-server/infrastructure"
 )
 
 func AuthRequire(c *gin.Context){
 	tokenString:=getBearerToken(c.GetHeader("Authorization"))
 
 	if(tokenString==""){
-		fmt.Println("oh no")
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -34,7 +31,8 @@ func AuthRequire(c *gin.Context){
 		return []byte(os.Getenv("PASSWORD_SECRET")), nil
 	})
 	if err != nil {
-		log.Fatal(err)
+		c.AbortWithStatus(http.StatusUnauthorized)
+		return
 	}
 
 	if claims, ok := retToken.Claims.(jwt.MapClaims); ok {
@@ -44,11 +42,12 @@ func AuthRequire(c *gin.Context){
 		}
 		userEmail:= claims["sub"]
 		var user domain_auth_model.UserEntity
-		initializers.DB.First(&user,"email = ?",userEmail)
+		infrastructure.DB.First(&user,"email = ?",userEmail)
 		if(user.Id==""){
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+		c.Set("user",user.Id)
 		c.Next()
 
 	} else {

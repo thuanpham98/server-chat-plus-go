@@ -1,117 +1,61 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"log"
-	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/rabbitmq/amqp091-go"
 	application_controllers "github.com/thuanpham98/go-websocker-server/application/controllers"
-	application_errors "github.com/thuanpham98/go-websocker-server/application/errors"
 	application_middlewares "github.com/thuanpham98/go-websocker-server/application/middlewares"
-	"github.com/thuanpham98/go-websocker-server/chat"
-	"github.com/thuanpham98/go-websocker-server/initializers"
+	"github.com/thuanpham98/go-websocker-server/infrastructure"
 )
 
 func main() {
 	// initialize
-	initializers.LoadEnvVariable()
-	initializers.ConnectToPostgresql()
-    initializers.SyncDatabase()
-    initializers.ConnectMessageQueue()
+	infrastructure.LoadEnvVariable()
+	infrastructure.ConnectToPostgresql()
+    infrastructure.SyncDatabase()
+    infrastructure.ConnectMessageQueue()
+    infrastructure.MessageChannels=make(map[string]*amqp091.Channel)
 
-    defer initializers.MessageQueueConntection.Close()
+    defer infrastructure.MessageQueueConntection.Close()
 
-
-    ch, err := initializers.MessageQueueConntection.Channel()
-     application_errors.FailOnError(err, "Failed to open a channel")
-    defer ch.Close()
-
-    q, err := ch.QueueDeclare(
-        "hello", // Tên hàng đợi
-        false,   // durable
-        false,   // delete when unused
-        false,   // exclusive
-        false,   // no-wait
-        nil,     // arguments
-    )
-     application_errors.FailOnError(err, "Failed to declare a queue")
-
-    msgs, err := ch.Consume(
-        q.Name, // queue
-        "",     // consumer
-        true,   // auto-ack
-        false,  // exclusive
-        false,  // no-local
-        false,  // no-wait
-        nil,    // args
-    )
-     application_errors.FailOnError(err, "Failed to register a consumer")
-
-    // forever := make(chan bool)
-
-    // Set Context
-    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-    defer cancel()
-
-    // test send message
-    body := "Hello World!"
-    err = ch.PublishWithContext( // errors here
-       ctx,    // context
-       "",     // exchange
-       q.Name, // routing key
-       false,  // mandatory
-       false,  // immediate
-       amqp.Publishing{
-          ContentType: "text/plain",
-          Body:        []byte(body),
-       })
-	    application_errors.FailOnError(err,"error send body")
-
-    go func() {
-        for d := range msgs {
-            log.Printf("Received a message: %s", d.Body)
-        }
-    }()
-
-    log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
 
 	// config for websocket 
-	hub := chat.NewHub()
-	go hub.Run()
+	// hub := chat.NewHub()
+	// go hub.Run()
 
 	//we need pass hub to out route with roomid
 	app := gin.Default()
-
+    corCf:=cors.DefaultConfig()
+    corCf.AllowHeaders=[]string{"Authorization", "Content-Type"}
+    corCf.AllowOrigins = []string{"*"} 
     // cors
-     app.Use(cors.Default())
-
-    
+    app.Use(cors.New(corCf))
     // version router
     routerVersion := app.Group("/api/v1")
-
     // auth router
     auth :=routerVersion.Group("/auth")
     auth.POST("/signup",application_controllers.SignUp)
     auth.POST("/login",application_controllers.Login)
-
-
     // user router
     user:= routerVersion.Group("/user")
-    user.GET("/:id",application_middlewares.AuthRequire,application_controllers.GetUserInfo)
+    user.GET("/info",application_middlewares.AuthRequire,application_controllers.GetUserInfo)
+    user.GET("/friends",application_middlewares.AuthRequire,application_controllers.GetListFriends)
+
+    // message router
+    message:= routerVersion.Group("/message")
+    message.POST("/:id",application_middlewares.AuthRequire,application_controllers.SendMessageToFriend)
 
     // websocket router
-	app.GET("/ws/:roomId",func(c *gin.Context) {
+	app.GET("/ws/:userid",func(c *gin.Context) {
         fmt.Println("connect")
-		roomId := c.Param("roomId")
-		chat.ServeWS(c, roomId, hub)
+		// roomId := c.Param("roomId")
+		// chat.ServeWS(c, roomId, hub)
+        application_controllers.ListenMessageForUser(c)
 	})
 
 	app.Run()
     // <-forever
-
-
 }
