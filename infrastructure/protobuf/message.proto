@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+option go_package = "/message_protobuf";
+
+enum MessageType {
+  TEXT = 0;
+  IMAGE = 1;
+  FILE = 2;
+}
+
+message Group {
+    string id = 1;
+    string name=2;
+}
+
+message MessageReponse {
+    string id = 1;
+    string sender=2;
+    string receiver=3;
+    Group group =4;
+    string createAt=5;
+    string content = 6;
+    MessageType type=7;
+}
+
+message MessageRequest {
+    string receiver=1;
+    Group group =2;
+    string content = 3;
+    MessageType type=4;
+}

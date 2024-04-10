@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rabbitmq/amqp091-go"
@@ -46,14 +44,14 @@ func main() {
 
     // message router
     message:= routerVersion.Group("/message")
-    message.POST("/:id",application_middlewares.AuthRequire,application_controllers.SendMessageToFriend)
+    message.POST("/send",application_middlewares.AuthRequire,application_controllers.SendMessageToFriend)
 
     // websocket router
-	app.GET("/ws/:userid",func(c *gin.Context) {
-        fmt.Println("connect")
+	app.GET("user/ws/message",application_middlewares.ValidateTokenCoockie,func(c *gin.Context) {
 		// roomId := c.Param("roomId")
 		// chat.ServeWS(c, roomId, hub)
         application_controllers.ListenMessageForUser(c)
+        // 
 	})
 
 	app.Run()

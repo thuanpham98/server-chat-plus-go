@@ -29,7 +29,15 @@ func SignUp(c *gin.Context){
 		return
 	}
 
-	hashed,err:=bcrypt.GenerateFromPassword([]byte(body.Password),8)
+	// cost,err:=bcrypt.Cost([]byte(os.Getenv("PASSWORD_SECRET")))
+	// if(err !=nil){
+	// 	c.JSON(http.StatusBadRequest,gin.H{
+	// 		"error":"Failed to create account",
+	// 	})
+	// 	return
+	// }
+	
+	hashed,err:=bcrypt.GenerateFromPassword([]byte(body.Password),bcrypt.DefaultCost)
 
 	if(err!=nil){
 		c.JSON(http.StatusBadRequest,gin.H{
@@ -99,7 +107,7 @@ func Login(c *gin.Context){
 		"exp":time.Now().Add(time.Hour*24).Unix(),
 	})
 
-	tokenString,err:= token.SignedString([]byte(os.Getenv("PASSWORD_SECRET")))
+	tokenString,err:= token.SignedString([]byte(os.Getenv("JWT_HMAC_SECRET_KEY")))
 
 	if(err!=nil){
 		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_model.CommonReponse{

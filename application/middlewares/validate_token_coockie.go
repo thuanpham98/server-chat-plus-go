@@ -2,9 +2,9 @@ package application_middlewares
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,10 +13,10 @@ import (
 	"github.com/thuanpham98/go-websocker-server/infrastructure"
 )
 
-func AuthRequire(c *gin.Context){
-	tokenString:=getBearerToken(c.GetHeader("Authorization"))
-
-	if(tokenString==""){
+func ValidateTokenCoockie(c *gin.Context){
+	 tokenString,err:=c.Cookie("token");
+	if err!=nil {
+		fmt.Println(err)
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
@@ -54,12 +54,4 @@ func AuthRequire(c *gin.Context){
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
-}
-
-func getBearerToken(rawData string) string{
-	parserToken := strings.Split(rawData, " ")
-	if len(parserToken) == 2 && parserToken[0]=="Bearer" {
-		return strings.Split(rawData, " ")[1]
-	}
-	return ""
 }

@@ -14,6 +14,7 @@ type MessageEntity struct{
     DeletedAt gorm.DeletedAt 
 	Sender string
 	Receiver string
+	Type MessageType
 	Group GroupEntity `gorm:"foreignkey:Id"`
 	Content string
 }
