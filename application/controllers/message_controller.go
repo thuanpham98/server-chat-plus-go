@@ -105,7 +105,7 @@ func SendMessageToFriend(c *gin.Context) {
 		})
 		return
 	}
-	err = ch.PublishWithContext(
+	errPushReceiver := ch.PublishWithContext(
 		ctx,
 		message.Receiver, //exchange name
 		message.Receiver, // router key
@@ -116,7 +116,19 @@ func SendMessageToFriend(c *gin.Context) {
 			Body: messageToCloud,
 		},
 	)
-	if err != nil {
+
+	errPushSender := ch.PublishWithContext(
+		ctx,
+		senderId.(string), //exchange name
+		senderId.(string), // router key
+		false,
+		false,
+		amqp091.Publishing{
+			ContentType: "application/octet-stream",
+			Body: messageToCloud,
+		},
+	)
+	if errPushReceiver != nil || errPushSender!=nil {
 		c.JSON(http.StatusBadRequest,gin.H{
 			"error":"Failed to read body",
 		})
@@ -339,9 +351,10 @@ func ListenMessageForUser(c *gin.Context){
 	defer websocketConnection.Close()
 
 	go readPump(websocketConnection,func() {
-		websocketConnection.Close()
-		ch.Close()
-		delete(infrastructure.MessageChannels,userid)
+		defer ch.Close()
+		defer delete(infrastructure.MessageChannels,userid)
+		defer close(userCh)
+		defer websocketConnection.Close()
 	})
 
 	go writePump(websocketConnection, userCh)

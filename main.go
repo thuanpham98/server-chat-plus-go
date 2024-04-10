@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/rabbitmq/amqp091-go"
@@ -25,6 +27,7 @@ func main() {
 	// go hub.Run()
 
 	//we need pass hub to out route with roomid
+    gin.SetMode(os.Getenv("GIN_MODE"))
 	app := gin.Default()
     corCf:=cors.DefaultConfig()
     corCf.AllowHeaders=[]string{"Authorization", "Content-Type"}
