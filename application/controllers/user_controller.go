@@ -12,14 +12,26 @@ import (
 func GetUserInfo(c *gin.Context){
 	userId,ok:=c.Get("user")
 	if(!ok){
-		c.JSON(http.StatusNotFound,gin.H{"error": "user not found"})
+		c.JSON(http.StatusBadRequest,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "user not found",
+				Data: nil,
+			},
+		})
 		return
 	}
 	var user domain_auth_model.UserEntity
 	infrastructure.DB.First(&user,"id = ?",userId)
 
 	if(user.Id==""){
-		c.JSON(http.StatusNotFound,gin.H{"error": "user not found"})
+		c.JSON(http.StatusBadRequest,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "user not found",
+				Data: nil,
+			},
+		})
 		return
 	}
 	
@@ -38,14 +50,26 @@ func GetUserInfo(c *gin.Context){
 func GetListFriends(c *gin.Context){
 	userId,ok:=c.Get("user")
 	if(!ok){
-		c.JSON(http.StatusNotFound,gin.H{"error": "user not found"})
+		c.JSON(http.StatusBadRequest,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "user not found",
+				Data: nil,
+			},
+		})
 		return
 	}
 	var users []domain_auth_model.UserEntity
 	result := infrastructure.DB.Where("Id <> ?", userId).Find(&users)
 
 	if(result.Error!=nil){
-		c.JSON(http.StatusNotFound,gin.H{"error": "Query list friend error"})
+		c.JSON(http.StatusBadRequest,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "Can not find list friends",
+				Data: nil,
+			},
+		})
 		return
 	}
 

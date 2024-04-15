@@ -14,7 +14,9 @@ import (
 )
 
 func ValidateTokenCoockie(c *gin.Context){
-	 tokenString,err:=c.Cookie("token");
+	 tokenString,err:=c.Cookie("Authorization");
+
+	 fmt.Println(tokenString)
 	if err!=nil {
 		fmt.Println(err)
 		c.AbortWithStatus(http.StatusUnauthorized)

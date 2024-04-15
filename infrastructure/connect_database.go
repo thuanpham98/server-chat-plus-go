@@ -9,7 +9,7 @@ import (
 
 var DB * gorm.DB
 
-func ConnectToPostgresql(){
+func ConnectToDatabase(){
 	dsn := os.Getenv("DBCONFIG")
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if(err!=nil){

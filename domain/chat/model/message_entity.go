@@ -9,9 +9,9 @@ import (
 
 type MessageEntity struct{
 	ID string `gorm:"type:uuid;primary_key"`
-	CreatedAt time.Time
+	CreatedAt string `gorm:"index:create_at"`
     UpdatedAt time.Time
-    DeletedAt gorm.DeletedAt 
+    DeletedAt gorm.DeletedAt
 	Sender string
 	Receiver string
 	Type MessageType

@@ -29,14 +29,6 @@ func SignUp(c *gin.Context){
 		return
 	}
 
-	// cost,err:=bcrypt.Cost([]byte(os.Getenv("PASSWORD_SECRET")))
-	// if(err !=nil){
-	// 	c.JSON(http.StatusBadRequest,gin.H{
-	// 		"error":"Failed to create account",
-	// 	})
-	// 	return
-	// }
-	
 	hashed,err:=bcrypt.GenerateFromPassword([]byte(body.Password),bcrypt.DefaultCost)
 
 	if(err!=nil){
@@ -72,15 +64,16 @@ func Login(c *gin.Context){
 	}
 
 	if(c.Bind(&body) !=nil){
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to read body",
-		})
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not read body",
+			Data: nil,
+		}})
 		return
 	}
 
 	var user domain_auth_model.UserEntity
 	infrastructure.DB.First(&user,"phone = ?",body.Username)
-
 	
 	if(user.Id==""){
 		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_model.CommonReponse{
@@ -112,11 +105,14 @@ func Login(c *gin.Context){
 	if(err!=nil){
 		c.JSON(http.StatusNotFound,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 105,
-			Message: "user not found",
+			Message: "login error",
 			Data: nil,
 		}})
 		return
 	}
+
+	c.SetSameSite(http.SameSiteNoneMode)
+	c.SetCookie("Authorization",tokenString,3600*24,"","",false,true)
 
 	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
 		Code: 0,

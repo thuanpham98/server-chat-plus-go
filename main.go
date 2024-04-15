@@ -14,10 +14,11 @@ import (
 func main() {
 	// initialize
 	infrastructure.LoadEnvVariable()
-	infrastructure.ConnectToPostgresql()
+	infrastructure.ConnectToDatabase()
     infrastructure.SyncDatabase()
     infrastructure.ConnectMessageQueue()
     infrastructure.MessageChannels=make(map[string]*amqp091.Channel)
+    infrastructure.ConnectStorage()
 
     defer infrastructure.MessageQueueConntection.Close()
 
@@ -30,8 +31,9 @@ func main() {
     gin.SetMode(os.Getenv("GIN_MODE"))
 	app := gin.Default()
     corCf:=cors.DefaultConfig()
-    corCf.AllowHeaders=[]string{"Authorization", "Content-Type"}
-    corCf.AllowOrigins = []string{"*"} 
+    corCf.AllowHeaders=[]string{"Authorization", "Content-Type","Cookie"}
+    corCf.AllowOrigins = []string{"http://localhost:3000","http://chat-app.com.vn"}
+    corCf.AllowCredentials = true
     // cors
     app.Use(cors.New(corCf))
     // version router
@@ -42,20 +44,32 @@ func main() {
     auth.POST("/login",application_controllers.Login)
     // user router
     user:= routerVersion.Group("/user")
-    user.GET("/info",application_middlewares.AuthRequire,application_controllers.GetUserInfo)
-    user.GET("/friends",application_middlewares.AuthRequire,application_controllers.GetListFriends)
+    user.GET("/info",application_middlewares.ValidateTokenCoockie,application_controllers.GetUserInfo)
+    user.GET("/friends",application_middlewares.ValidateTokenCoockie,application_controllers.GetListFriends)
 
     // message router
     message:= routerVersion.Group("/message")
-    message.POST("/send",application_middlewares.AuthRequire,application_controllers.SendMessageToFriend)
+    message.POST("/send",application_middlewares.ValidateTokenCoockie,application_controllers.SendMessageToFriend)
+    message.POST("/list",application_middlewares.ValidateTokenCoockie,application_controllers.GetMessagePageAble)
+
+    // group router
+    group:= routerVersion.Group("/group")
+    group.POST("/create",application_middlewares.ValidateTokenCoockie,application_controllers.CreateGroup)
+
+
+    // storage router
+    storage:=routerVersion.Group("/storage")
+    storage.POST("/upload",application_middlewares.ValidateTokenCoockie,application_controllers.UploadFile)
+    storage.POST("/download",application_middlewares.AuthRequire,application_controllers.DownloadFile)
+    storage.GET("/public/:file",application_middlewares.ValidateTokenCoockie,application_controllers.PreviewFile)
+
 
     // websocket router
 	app.GET("user/ws/message",application_middlewares.ValidateTokenCoockie,func(c *gin.Context) {
-		// roomId := c.Param("roomId")
-		// chat.ServeWS(c, roomId, hub)
         application_controllers.ListenMessageForUser(c)
-        // 
 	})
+
+    app.GET("/group/ws/:groupid",application_middlewares.ValidateTokenCoockie)
 
 	app.Run()
     // <-forever

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,21 +21,30 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// send message
 func SendMessageToFriend(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to read body",
+			"error": domain_common_model.CommonReponse{
+				Code: 400,
+				Message: "Can not read body Data",
+				Data: nil,
+			},
 		})
 		return
 	}
 
 	var message message_protobuf.MessageRequest
 	if err := proto.Unmarshal(body, &message); err != nil {
-			c.JSON(http.StatusBadRequest,gin.H{
-				"error":"Failed to read body",
-			})
-			return
+		c.JSON(http.StatusBadRequest,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 400,
+				Message: "Can not read message",
+				Data: nil,
+			},
+		})
+		return
 	}
 	
 
@@ -43,7 +53,13 @@ func SendMessageToFriend(c *gin.Context) {
 	infrastructure.DB.First(&user,"id = ?",receiverId)
 
 	if(user.Id==""){
-		c.JSON(http.StatusNotFound,gin.H{"error": "user not found"})
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "Can not find user",
+				Data: nil,
+			},
+		})
 		return
 	}
 
@@ -51,8 +67,12 @@ func SendMessageToFriend(c *gin.Context) {
 	senderId,ok:=c.Get("user")
 	messageType,checkMessageType:= domain_chat_model.ParseString(message.Type.String())
 	if(!ok||!checkMessageType){
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to read body",
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "Can not find user",
+				Data: nil,
+			},
 		})
 		return
 	}
@@ -61,7 +81,7 @@ func SendMessageToFriend(c *gin.Context) {
 		ID: uuid.New().String(),
 		Sender: senderId.(string),
 		Receiver: receiverId,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().Format(time.RFC3339),
 		Group: domain_chat_model.GroupEntity{},
 		Content: message.Content,
 		Type: messageType,
@@ -69,8 +89,12 @@ func SendMessageToFriend(c *gin.Context) {
 	result:=infrastructure.DB.Create(&message_entity)
 
 	if(result.Error!=nil){
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to create message",
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "Failed to save message",
+				Data: nil,
+			},
 		})
 		return
 	}
@@ -79,15 +103,23 @@ func SendMessageToFriend(c *gin.Context) {
 	ch, err := infrastructure.MessageQueueConntection.Channel()
 	if err != nil {
 		fmt.Println(err)
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to create chanle",
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "False to create channel",
+				Data: nil,
+			},
 		})
 		return
 	}
 	defer ch.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-	defer cancel()
+	ctxSender, cancelCtxSender := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	ctxReceiver, cancelCtxReceiver := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+
+	defer cancelCtxSender()
+	defer cancelCtxReceiver()
+
 
 	messageToCloud,errMessageToCloud:=proto.Marshal(&message_protobuf.MessageReponse{
 		Id: message_entity.ID,
@@ -95,19 +127,25 @@ func SendMessageToFriend(c *gin.Context) {
 		Receiver: message_entity.Receiver,
 		Group: message.Group,
 		Type: message.Type,
-		CreateAt: message_entity.CreatedAt.Format(time.RFC3339),
+		CreateAt: message_entity.CreatedAt,
 		Content: message_entity.Content,
 	})
+
 	if errMessageToCloud != nil {
 		fmt.Println(err)
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to create chanle",
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "False to noti message",
+				Data: nil,
+			},
 		})
 		return
 	}
+
 	errPushReceiver := ch.PublishWithContext(
-		ctx,
-		message.Receiver, //exchange name
+		ctxReceiver,
+		os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"), //exchange name
 		message.Receiver, // router key
 		false,
 		false,
@@ -118,8 +156,8 @@ func SendMessageToFriend(c *gin.Context) {
 	)
 
 	errPushSender := ch.PublishWithContext(
-		ctx,
-		senderId.(string), //exchange name
+		ctxSender,
+		os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"), //exchange name
 		senderId.(string), // router key
 		false,
 		false,
@@ -129,8 +167,14 @@ func SendMessageToFriend(c *gin.Context) {
 		},
 	)
 	if errPushReceiver != nil || errPushSender!=nil {
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to read body",
+		fmt.Println(errPushReceiver)
+		fmt.Println(errPushSender)
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "False to send message to user",
+				Data: nil,
+			},
 		})
 		return
 	}
@@ -143,93 +187,7 @@ func SendMessageToFriend(c *gin.Context) {
 	}})
 }
 
-// func SendMessageToFriend(c *gin.Context) {
-// 	var body struct{
-// 		To string `json:"to" binding:"required"`
-// 		Content string `json:"content" binding:"required"`
-// 		Type string `json:"type" binding:"required"`
-// 	}
-
-// 	if(c.Bind(&body) !=nil){
-// 		c.JSON(http.StatusBadRequest,gin.H{
-// 			"error":"Failed to read body",
-// 		})
-// 		return
-// 	}
-
-// 	receiverId:= body.To
-// 	var user domain_auth_model.UserEntity
-// 	infrastructure.DB.First(&user,"id = ?",receiverId)
-
-// 	if(user.Id==""){
-// 		c.JSON(http.StatusNotFound,gin.H{"error": "user not found"})
-// 		return
-// 	}
-
-// 	ch, err := infrastructure.MessageQueueConntection.Channel()
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		c.JSON(http.StatusBadRequest,gin.H{
-// 			"error":"Failed to create chanle",
-// 		})
-// 		return
-// 	}
-// 	defer ch.Close()
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), 5000*time.Millisecond)
-// 	defer cancel()
-// 	err = ch.PublishWithContext(
-// 		ctx,
-// 		body.To, //exchange name
-// 		body.To, // router key
-// 		false,
-// 		false,
-// 		amqp091.Publishing{
-// 			ContentType: "application/octet-stream",
-// 			Body: []byte(body.Content),
-// 		},
-// 	)
-// 	if err != nil {
-// 		c.JSON(http.StatusBadRequest,gin.H{
-// 			"error":"Failed to read body",
-// 		})
-// 		return
-// 	}
-
-// 	senderId,ok:=c.Get("user")
-// 	messageType,checkMessageType:= domain_chat_model.ParseString(body.Type)
-// 	if(!ok||!checkMessageType){
-// 		c.JSON(http.StatusBadRequest,gin.H{
-// 			"error":"Failed to read body",
-// 		})
-// 		return
-// 	}
-
-// 	message:=domain_chat_model.MessageEntity{
-// 			ID: uuid.New().String(),
-// 			Sender: senderId.(string),
-// 			Receiver: receiverId,
-// 			CreatedAt: time.Now(),
-// 			Group: domain_chat_model.GroupEntity{},
-// 			Content: body.Content,
-// 			Type: messageType,
-// 		}
-// 		result:=infrastructure.DB.Create(&message)
-
-// 		if(result.Error!=nil){
-// 			c.JSON(http.StatusBadRequest,gin.H{
-// 				"error":"Failed to create message",
-// 			})
-// 			return
-// 		}
-
-// 	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
-// 		Data: true,
-// 		Code: 0,
-// 		Message: "success",
-// 	}})
-// }
-
+// listen message
 func ListenMessageForUser(c *gin.Context){
 	retContext,okCheckUserId := c.Get("user")
 	if(!okCheckUserId){
@@ -256,7 +214,7 @@ func ListenMessageForUser(c *gin.Context){
 	}
 	
 	// tạo channel để lắng nghe
-	infrastructure.MutexMessageChannels.Lock()
+	// infrastructure.MutexMessageChannels.Lock()
 	var ch *amqp091.Channel
 	ch, ok := infrastructure.MessageChannels[userid]
 	if !ok {
@@ -271,10 +229,10 @@ func ListenMessageForUser(c *gin.Context){
 		ch=newCh
 		infrastructure.MessageChannels[userid]=ch
 	}
-	infrastructure.MutexMessageChannels.Unlock()
+	// infrastructure.MutexMessageChannels.Unlock()
 	
     err = ch.ExchangeDeclare(
-            userid, // Tên của exchange
+            os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"), // Tên của exchange
             "direct",             // Loại của exchange
             true,                 // Durable
             false,                // Auto-deleted
@@ -312,7 +270,7 @@ func ListenMessageForUser(c *gin.Context){
 	err = ch.QueueBind(
 		q.Name,       // Tên của hàng đợi
 		userid,           // Routing key
-		userid, // Tên của exchange
+		os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"), // Tên của exchange
 		false,        // No-wait
 		nil,          // Arguments
 	)
@@ -351,10 +309,15 @@ func ListenMessageForUser(c *gin.Context){
 	defer websocketConnection.Close()
 
 	go readPump(websocketConnection,func() {
-		defer ch.Close()
-		defer delete(infrastructure.MessageChannels,userid)
-		defer close(userCh)
-		defer websocketConnection.Close()
+		
+		// close(userCh)
+		websocketConnection.Close()
+		ch.Close()
+		delete(infrastructure.MessageChannels,userid)
+
+		// websocketConnection.Close()
+		// ch.Close()
+		// delete(infrastructure.MessageChannels,userid)
 	})
 
 	go writePump(websocketConnection, userCh)
@@ -362,16 +325,16 @@ func ListenMessageForUser(c *gin.Context){
 	
 	
     for msg := range msgs {
-		// userCh <- msg.Body
-		select {
-			case userCh <- msg.Body:
-			default:
-				// Nếu không thể gửi tin nhắn, đóng kết nối WebSocket
-				websocketConnection.Close()
-				ch.Close()
-				close(userCh)
-				delete(infrastructure.MessageChannels,userid)
-			}
+		userCh <- msg.Body
+		// select {
+		// 	case userCh <- msg.Body:
+		// 	default:
+		// 		// Nếu không thể gửi tin nhắn, đóng kết nối WebSocket
+		// 		websocketConnection.Close()
+		// 		ch.Close()
+		// 		close(userCh)
+		// 		delete(infrastructure.MessageChannels,userid)
+		// 	}
 	}
 }
 
@@ -398,4 +361,71 @@ func readPump(conn *websocket.Conn, closeCallback func()) {
             break // Thoát khỏi vòng lặp khi kết nối bị đóng
         }
     }
+}
+
+// get message with page
+func GetMessagePageAble(c *gin.Context){
+	userId,ok:=c.Get("user")
+	if(!ok||userId==""){
+		c.JSON(http.StatusBadRequest,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "user not found",
+				Data: nil,
+			},
+		})
+		return
+	}
+
+	var body struct{
+		Page int `json:"page"`
+		PageSize int `json:"page_size"`
+	}
+	fmt.Println(c.Request.Body)
+
+
+	if(c.Bind(&body) !=nil){
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not read body",
+			Data: nil,
+		}})
+		return
+	}
+
+	var offset int = (body.Page) * body.PageSize
+
+	var messages []domain_chat_model.MessageEntity
+    if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities ORDER BY created_at DESC LIMIT ? OFFSET ?", body.PageSize, offset).Scan(&messages).Error; err != nil {
+        c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not get data",
+			Data: nil,
+		}})
+		return
+    }
+
+	var dtos []domain_chat_model.MessageDTO
+
+    for _, mess := range messages {
+        dto := domain_chat_model.MessageDTO{
+			Id: mess.ID,
+			Sender: mess.Sender,
+			Receiver: mess.Receiver,
+			Group: domain_chat_model.GroupDTO{
+				Id: mess.Group.Id,
+				Name: mess.Group.Name,
+			},
+			CreateAt: mess.CreatedAt,
+			Content: mess.Content,
+			Type: mess.Type,
+        }
+        dtos = append(dtos, dto)
+    }
+	
+	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
+		Data: dtos,
+		Code: 0,
+		Message: "success",
+	}})
 }
