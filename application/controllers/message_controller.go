@@ -308,37 +308,27 @@ func ListenMessageForUser(c *gin.Context){
 	defer close(userCh)
 	defer websocketConnection.Close()
 
-	go readPump(websocketConnection,func() {
-		
-		// close(userCh)
-		websocketConnection.Close()
-		ch.Close()
-		delete(infrastructure.MessageChannels,userid)
-
-		// websocketConnection.Close()
-		// ch.Close()
-		// delete(infrastructure.MessageChannels,userid)
-	})
+	go readPump(websocketConnection)
 
 	go writePump(websocketConnection, userCh)
 
-	
-	
-    for msg := range msgs {
-		userCh <- msg.Body
-		// select {
-		// 	case userCh <- msg.Body:
-		// 	default:
-		// 		// Nếu không thể gửi tin nhắn, đóng kết nối WebSocket
-		// 		websocketConnection.Close()
-		// 		ch.Close()
-		// 		close(userCh)
-		// 		delete(infrastructure.MessageChannels,userid)
-		// 	}
+	for msg := range msgs {
+		// userCh <- msg.Body
+		select {
+			case userCh <- msg.Body:
+			default:
+				// websocketConnection.Close()
+				// ch.Close()
+				// close(userCh)
+				// delete(infrastructure.MessageChannels, userid)
+				return
+		}
 	}
+    
 }
 
 func writePump(conn *websocket.Conn, userCh <-chan []byte) {
+	defer conn.Close()
 	for msg := range userCh {
 		err := conn.WriteMessage(websocket.BinaryMessage, msg)
 		if err != nil {
@@ -348,7 +338,8 @@ func writePump(conn *websocket.Conn, userCh <-chan []byte) {
 	}
 }
 
-func readPump(conn *websocket.Conn, closeCallback func()) {
+func readPump(conn *websocket.Conn) {
+	defer conn.Close()
 	for {
         _, _, err := conn.ReadMessage()
         if err != nil {
@@ -357,7 +348,7 @@ func readPump(conn *websocket.Conn, closeCallback func()) {
             } else {
                 log.Printf("Failed to read message from WebSocket: %v", err)
             }
-			closeCallback()
+			
             break // Thoát khỏi vòng lặp khi kết nối bị đóng
         }
     }

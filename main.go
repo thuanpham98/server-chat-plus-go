@@ -32,7 +32,7 @@ func main() {
 	app := gin.Default()
     corCf:=cors.DefaultConfig()
     corCf.AllowHeaders=[]string{"Authorization", "Content-Type","Cookie"}
-    corCf.AllowOrigins = []string{"http://localhost:3000","http://chat-app.com.vn"}
+    corCf.AllowOrigins = []string{"http://localhost:8080","http://chat-app.com.vn"}
     corCf.AllowCredentials = true
     // cors
     app.Use(cors.New(corCf))
@@ -55,6 +55,7 @@ func main() {
     // group router
     group:= routerVersion.Group("/group")
     group.POST("/create",application_middlewares.ValidateTokenCoockie,application_controllers.CreateGroup)
+    group.POST("/send",application_middlewares.ValidateTokenCoockie,application_controllers.SendMessageToGroup)
 
 
     // storage router
@@ -69,7 +70,7 @@ func main() {
         application_controllers.ListenMessageForUser(c)
 	})
 
-    app.GET("/group/ws/:groupid",application_middlewares.ValidateTokenCoockie)
+    app.GET("/group/ws/:groupid",application_middlewares.ValidateTokenCoockie,application_controllers.ListenMessageFromGroup)
 
 	app.Run()
     // <-forever
