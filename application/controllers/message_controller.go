@@ -296,8 +296,6 @@ func ListenMessageForUser(c *gin.Context){
 	// Lắng nghe sự kiện từ amqp091.Delivery
 	go func() {
 		for delivery := range rabbConsumer {
-			fmt.Println("nhận message")
-			fmt.Println(delivery.Body)
 			// Xử lý dữ liệu từ AMQP và gửi qua WebSocket
 			errWriteMessage := wsConn.WriteMessage(websocket.BinaryMessage, delivery.Body)
 			if errWriteMessage != nil {
@@ -344,8 +342,6 @@ func GetMessagePageAble(c *gin.Context){
 		Page int `json:"page"`
 		PageSize int `json:"page_size"`
 	}
-	fmt.Println(c.Request.Body)
-
 
 	if(c.Bind(&body) !=nil){
 		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{

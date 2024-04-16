@@ -45,7 +45,7 @@ func UploadFile(c *gin.Context){
 	file, errReadBody := c.FormFile("file")
 
 	if errReadBody != nil {
-		fmt.Println(c.Request.Form)
+		fmt.Printf("Error: %v",errReadBody)
 		c.JSON(http.StatusNotFound,gin.H{
 			"error": domain_common_model.CommonReponse{
 				Code: 404,
@@ -70,9 +70,6 @@ func UploadFile(c *gin.Context){
 	defer src.Close()
 
 	// Tải tệp lên MinIO
-	fmt.Println(file.Filename)
-	fmt.Println(file.Size)
-
 	info, errUploadFile := infrastructure.MinIOClient.PutObject(context.Background(), "file", file.Filename, src, file.Size, minio.PutObjectOptions{})
 
 	if errUploadFile != nil {
@@ -86,21 +83,6 @@ func UploadFile(c *gin.Context){
 		})
 		return
 	}
-
-	// presignedURL, errPresigned :=infrastructure.MinIOClient.PresignedGetObject(context.Background(),"file",info.Key,time.Hour*24,nil)
-
-	// if errPresigned != nil {
-	// 	log.Fatalln(errUploadFile)
-	// 	c.JSON(http.StatusNotFound,gin.H{
-	// 		"error": domain_common_model.CommonReponse{
-	// 			Code: 404,
-	// 			Message: "Can not upload file",
-	// 			Data: nil,
-	// 		},
-	// 	})
-	// 	return
-	// }
-	// fmt.Println(presignedURL)
 	
 	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
 		Data: info.Key,
@@ -173,7 +155,6 @@ func DownloadFile(c *gin.Context){
 
 func PreviewImage(c *gin.Context){
 	userId,ok:=c.Get("user")
-		fmt.Println(ok)
 
 	if(!ok){
 		c.JSON(http.StatusNotFound,gin.H{

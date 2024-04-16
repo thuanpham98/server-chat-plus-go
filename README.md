@@ -18,3 +18,9 @@ EXCHANGE_NAME_CHAT_NEWS="amq.fanout"
 ```
 protoc --proto_path=infrastructure/protobuf --go_out=infrastructure infrastructure/protobuf/message.proto
 ```
+
+build
+
+```
+go build -o bin/chat-app && cp .env bin
+```
