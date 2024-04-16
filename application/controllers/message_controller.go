@@ -341,6 +341,7 @@ func GetMessagePageAble(c *gin.Context){
 	var body struct{
 		Page int `json:"page"`
 		PageSize int `json:"page_size"`
+		Receiver string `json:"receiver"`
 	}
 
 	if(c.Bind(&body) !=nil){
@@ -355,7 +356,7 @@ func GetMessagePageAble(c *gin.Context){
 	var offset int = (body.Page) * body.PageSize
 
 	var messages []domain_chat_model.MessageEntity
-    if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities ORDER BY created_at DESC LIMIT ? OFFSET ?", body.PageSize, offset).Scan(&messages).Error; err != nil {
+    if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities WHERE sender = ? AND receiver = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",userId, body.Receiver ,body.PageSize, offset).Scan(&messages).Error; err != nil {
         c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 400,
 			Message: "Can not get data",
@@ -366,21 +367,25 @@ func GetMessagePageAble(c *gin.Context){
 
 	var dtos []domain_chat_model.MessageDTO
 
-    for _, mess := range messages {
-        dto := domain_chat_model.MessageDTO{
-			Id: mess.ID,
-			Sender: mess.Sender,
-			Receiver: mess.Receiver,
+	for i := len(messages) - 1; i >= 0; i-- {
+		dto := domain_chat_model.MessageDTO{
+			Id: messages[i].ID,
+			Sender: messages[i].Sender,
+			Receiver: messages[i].Receiver,
 			Group: domain_chat_model.GroupDTO{
-				Id: mess.Group.Id,
-				Name: mess.Group.Name,
+				Id: messages[i].Group.Id,
+				Name: messages[i].Group.Name,
 			},
-			CreateAt: mess.CreatedAt,
-			Content: mess.Content,
-			Type: mess.Type,
+			CreateAt: messages[i].CreatedAt,
+			Content: messages[i].Content,
+			Type: messages[i].Type,
         }
         dtos = append(dtos, dto)
-    }
+	}
+
+    // for _, mess := range messages {
+       
+    // }
 	
 	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
 		Data: dtos,
