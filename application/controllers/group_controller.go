@@ -176,8 +176,8 @@ func ListenMessageFromGroup(c *gin.Context){
 		return
 	}
 
-	userCh := make(chan []byte)
-	defer close(userCh)
+	// userCh := make(chan []byte)
+	// defer close(userCh)
 
 	closeCh := make(chan struct{})
 
@@ -187,7 +187,7 @@ func ListenMessageFromGroup(c *gin.Context){
 			// Xử lý dữ liệu từ AMQP và gửi qua WebSocket
 			errWriteMessage := wsConn.WriteMessage(websocket.BinaryMessage, delivery.Body)
 			if errWriteMessage != nil {
-				fmt.Printf("Failed to upgrade connection to WebSocket: %v", errWriteMessage)
+				fmt.Printf("Failed to write WebSocket: %v", errWriteMessage)
 			}
 		}
 	}()
@@ -211,11 +211,6 @@ func ListenMessageFromGroup(c *gin.Context){
 	// Đóng kết nối khi có sự kiện từ WebSocket hoặc AMQP
 	x, ok := <-closeCh
 	fmt.Printf("WebSocket connection closed %v %v",x,ok)
-
-	// select {
-	// 	case <-closeCh:
-	// 		fmt.Println("WebSocket connection closed")
-	// }
 }
 
 func SendMessageToGroup(c *gin.Context) {
@@ -261,8 +256,7 @@ func SendMessageToGroup(c *gin.Context) {
 
 	// save message into data base
 	senderId,ok:=c.Get("user")
-	messageType,checkMessageType:= domain_chat_model.ParseString(message.Type.String())
-	if(!ok||!checkMessageType){
+	if(!ok){
 		c.JSON(http.StatusNotFound,gin.H{
 			"error": domain_common_model.CommonReponse{
 				Code: 404,
@@ -282,7 +276,7 @@ func SendMessageToGroup(c *gin.Context) {
 			Name: message.Group.Name,
 		},
 		Content: message.Content,
-		Type: messageType,
+		Type: domain_chat_model.MessageType(message.Type),
 	}
 	result:=infrastructure.DB.Create(&message_entity)
 

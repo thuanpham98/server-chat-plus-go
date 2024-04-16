@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"time"
@@ -65,8 +64,7 @@ func SendMessageToFriend(c *gin.Context) {
 
 	// save message into data base
 	senderId,ok:=c.Get("user")
-	messageType,checkMessageType:= domain_chat_model.ParseString(message.Type.String())
-	if(!ok||!checkMessageType){
+	if(!ok){
 		c.JSON(http.StatusNotFound,gin.H{
 			"error": domain_common_model.CommonReponse{
 				Code: 404,
@@ -84,7 +82,7 @@ func SendMessageToFriend(c *gin.Context) {
 		CreatedAt: time.Now().Format(time.RFC3339),
 		Group: domain_chat_model.GroupEntity{},
 		Content: message.Content,
-		Type: messageType,
+		Type: domain_chat_model.MessageType(message.Type),
 	}
 	result:=infrastructure.DB.Create(&message_entity)
 
@@ -191,12 +189,16 @@ func ListenMessageForUser(c *gin.Context){
 	// Kiểm tra usre gửi tin nhắn có tồn tại hay không
 	retContext,okCheckUserId := c.Get("user")
 	if(!okCheckUserId){
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"user not found",
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "group not found",
+				Data: nil,
+			},
 		})
 		return
 	}
-	userid:=retContext.(string)
+	userId:=retContext.(string)
 
 
 	// Nâng cấp websocket bằng việc trả lại http 101 switch protocol
@@ -205,81 +207,73 @@ func ListenMessageForUser(c *gin.Context){
 		WriteBufferSize: 1024*1024,
 		CheckOrigin:func(r *http.Request) bool { return true } ,
 	}
-	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil {
-		log.Printf("Failed to upgrade connection to WebSocket: %v", err)
+	wsConn, errUpgradeWs := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if errUpgradeWs != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errUpgradeWs)
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Không thể khởi tạo websocket",
+			Data: nil,
+		}})
 		return
 	}
+	defer wsConn.Close()
 	
 	// tạo channel để lắng nghe
-	var ch *amqp091.Channel
-	ch, ok := infrastructure.MessageChannels[userid]
-	if !ok {
-		newCh, err := infrastructure.MessageQueueConntection.Channel()
-		if err != nil {
-			fmt.Println(err)
-			c.JSON(http.StatusBadRequest,gin.H{
-				"error":"Failed to create chanle",
-			})
-			return
-		}
-		ch=newCh
-		infrastructure.MessageChannels[userid]=ch
-	}
-	
-    err = ch.ExchangeDeclare(
-            os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"), // Tên của exchange
-            "direct",             // Loại của exchange
-            true,                 // Durable
-            false,                // Auto-deleted
-            false,                // Internal
-            false,                // No-wait
-            nil,                  // Arguments
-        )
-
-	if err != nil {
-		fmt.Println(err)
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to create chanle",
-		})
+	rabbChannel, errCreateChannel := infrastructure.MessageQueueConntection.Channel()
+	if errCreateChannel != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errCreateChannel)
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Không thể khởi tạo websocket",
+			Data: nil,
+		}})
 		return
 	}
+	defer rabbChannel.Close()
 
-    q, err := ch.QueueDeclare(
-        userid, // Tên hàng đợi
+	// khai báo queue
+    rabbQueue, errCreateQueue := rabbChannel.QueueDeclare(
+        userId, // Tên hàng đợi
         false,   // durable
         false,   // delete when unused
         false,   // exclusive
         false,   // no-wait
         nil,     // arguments
     )
-
-    if err != nil {
-		fmt.Println(err)
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to create chanle",
-		})
+	if errCreateQueue != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errCreateQueue)
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not connect websocket",
+			Data: nil,
+		}})
 		return
 	}
+	defer rabbChannel.QueueDelete(rabbQueue.Name,false,false,true)
 
      // Ràng buộc hàng đợi với exchange
-	err = ch.QueueBind(
-		q.Name,       // Tên của hàng đợi
-		userid,           // Routing key
+	errBindingQueue := rabbChannel.QueueBind(
+		rabbQueue.Name,       // Tên của hàng đợi
+		userId,           // Routing key
 		os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"), // Tên của exchange
 		false,        // No-wait
 		nil,          // Arguments
 	)
-	if err != nil {
-		fmt.Println(err)
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to create chanle",
-		})
+	if errBindingQueue != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errBindingQueue)
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not connect websocket",
+			Data: nil,
+		}})
 		return
 	}
+	defer rabbChannel.QueueUnbind(rabbQueue.Name,"",os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"),amqp091.Table{})
 
-    msgs, err := ch.Consume(
-        q.Name, // queue
+    // khởi tạo consumer để lắng nghe message
+    rabbConsumer, errConsume := rabbChannel.Consume(
+        rabbQueue.Name, // queue
         "",     // consumer
         true,   // auto-ack
         false,  // exclusive
@@ -287,68 +281,52 @@ func ListenMessageForUser(c *gin.Context){
         false,  // no-wait
         nil,    // args
     )
-
-    if err != nil {
-		fmt.Println(err)
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"Failed to create chanle",
-		})
+	if errConsume != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errConsume)
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not connect websocket",
+			Data: nil,
+		}})
 		return
 	}
 
-	userCh := make(chan []byte)
+	closeCh := make(chan struct{})
 
-
-	defer wsConn.Close()
-	defer ch.Close()
-    defer delete(infrastructure.MessageChannels,userid)
-	defer close(userCh)
-
-	go readPump(wsConn)
-
-	go writePump(wsConn, userCh)
-
-	wsConn.SetCloseHandler(func(code int, text string) error {
-		log.Printf("Sự kiện đóng được handller ở đây code %d and message: %s\n", code, text)
-		return nil
-	})
-
-	for msg := range msgs {
-		userCh <- msg.Body
-	}
-
-	fmt.Println("soket đóng rồi")
-
-    
-}
-
-func writePump(conn *websocket.Conn, userCh <-chan []byte) {
-	defer conn.Close()
-	for msg := range userCh {
-		err := conn.WriteMessage(websocket.BinaryMessage, msg)
-		if err != nil {
-			log.Printf("Failed to write message to WebSocket: %v", err)
-			break
+	// Lắng nghe sự kiện từ amqp091.Delivery
+	go func() {
+		for delivery := range rabbConsumer {
+			fmt.Println("nhận message")
+			fmt.Println(delivery.Body)
+			// Xử lý dữ liệu từ AMQP và gửi qua WebSocket
+			errWriteMessage := wsConn.WriteMessage(websocket.BinaryMessage, delivery.Body)
+			if errWriteMessage != nil {
+				fmt.Printf("Failed to write WebSocket: %v", errWriteMessage)
+			}
 		}
-	}
+	}()
+
+	// Lắng nghe sự kiện từ WebSocket
+	go func() {
+		defer close(closeCh)
+		for {
+			_, _, err := wsConn.ReadMessage()
+			if err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+					fmt.Printf("WebSocket connection closed normally: %v", err)
+				} else {
+					fmt.Printf("Failed to read message from WebSocket: %v", err)
+				}
+				break // Thoát khỏi vòng lặp khi kết nối bị đóng
+			}
+		}
+	}()
+
+	// Đóng kết nối khi có sự kiện từ WebSocket hoặc AMQP
+	x, ok := <-closeCh
+	fmt.Printf("WebSocket connection closed %v %v",x,ok)
 }
 
-func readPump(conn *websocket.Conn) {
-	defer conn.Close()
-	for {
-        _, _, err := conn.ReadMessage()
-        if err != nil {
-            if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-                log.Printf("WebSocket connection closed normally: %v", err)
-            } else {
-                log.Printf("Failed to read message from WebSocket: %v", err)
-            }
-            break // Thoát khỏi vòng lặp khi kết nối bị đóng
-        }
-    }
-}
-
-// get message with page
 func GetMessagePageAble(c *gin.Context){
 	userId,ok:=c.Get("user")
 	if(!ok||userId==""){

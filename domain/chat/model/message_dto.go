@@ -6,6 +6,6 @@ type MessageDTO struct {
 	Receiver string `json:"receiver"`
 	Group GroupDTO `json:"group"`
 	CreateAt string `json:"create_at"`
-	Content string `json:content`
-	Type MessageType
-}
+	Content string `json:"content"`
+	Type MessageType `json:"type"`
+}	

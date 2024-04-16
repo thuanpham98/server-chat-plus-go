@@ -1,22 +1,8 @@
 package domain_chat_model
 
-import "strings"
-
-type MessageType string
+type MessageType int32
 const (
-    TEXT MessageType = "TEXT"
-	IMAGE MessageType = "IMAGE";
-	FILE  MessageType = "FILE";
+    TEXT MessageType = 0
+	IMAGE MessageType = 1
+	FILE  MessageType = 2
 )
-
-var (
-    capabilitiesMessageType = map[string]MessageType{
-        "text":   TEXT,
-        "image": IMAGE,
-        "file": FILE,
-    }
-)
-func ParseString(str string) (MessageType, bool) {
-    c, ok := capabilitiesMessageType[strings.ToLower(str)]
-    return c, ok
-}
