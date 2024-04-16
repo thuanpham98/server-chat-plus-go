@@ -187,8 +187,8 @@ func SendMessageToFriend(c *gin.Context) {
 	}})
 }
 
-// listen message
 func ListenMessageForUser(c *gin.Context){
+	// Kiểm tra usre gửi tin nhắn có tồn tại hay không
 	retContext,okCheckUserId := c.Get("user")
 	if(!okCheckUserId){
 		c.JSON(http.StatusBadRequest,gin.H{
@@ -196,25 +196,22 @@ func ListenMessageForUser(c *gin.Context){
 		})
 		return
 	}
-
 	userid:=retContext.(string)
 
 
-		// Upgrade HTTP connection to WebSocket
+	// Nâng cấp websocket bằng việc trả lại http 101 switch protocol
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
-		WriteBufferSize: 1024*512,
+		WriteBufferSize: 1024*1024,
 		CheckOrigin:func(r *http.Request) bool { return true } ,
 	}
-	websocketConnection, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-
+	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("Failed to upgrade connection to WebSocket: %v", err)
 		return
 	}
 	
 	// tạo channel để lắng nghe
-	// infrastructure.MutexMessageChannels.Lock()
 	var ch *amqp091.Channel
 	ch, ok := infrastructure.MessageChannels[userid]
 	if !ok {
@@ -229,7 +226,6 @@ func ListenMessageForUser(c *gin.Context){
 		ch=newCh
 		infrastructure.MessageChannels[userid]=ch
 	}
-	// infrastructure.MutexMessageChannels.Unlock()
 	
     err = ch.ExchangeDeclare(
             os.Getenv("EXCHANGE_NAME_CHAT_POINT_TO_POINT"), // Tên của exchange
@@ -303,27 +299,26 @@ func ListenMessageForUser(c *gin.Context){
 	userCh := make(chan []byte)
 
 
+	defer wsConn.Close()
 	defer ch.Close()
     defer delete(infrastructure.MessageChannels,userid)
 	defer close(userCh)
-	defer websocketConnection.Close()
 
-	go readPump(websocketConnection)
+	go readPump(wsConn)
 
-	go writePump(websocketConnection, userCh)
+	go writePump(wsConn, userCh)
+
+	wsConn.SetCloseHandler(func(code int, text string) error {
+		log.Printf("Sự kiện đóng được handller ở đây code %d and message: %s\n", code, text)
+		return nil
+	})
 
 	for msg := range msgs {
-		// userCh <- msg.Body
-		select {
-			case userCh <- msg.Body:
-			default:
-				// websocketConnection.Close()
-				// ch.Close()
-				// close(userCh)
-				// delete(infrastructure.MessageChannels, userid)
-				return
-		}
+		userCh <- msg.Body
 	}
+
+	fmt.Println("soket đóng rồi")
+
     
 }
 
@@ -348,7 +343,6 @@ func readPump(conn *websocket.Conn) {
             } else {
                 log.Printf("Failed to read message from WebSocket: %v", err)
             }
-			
             break // Thoát khỏi vòng lặp khi kết nối bị đóng
         }
     }

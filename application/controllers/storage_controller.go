@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/minio/minio-go/v7"
@@ -161,17 +163,15 @@ func DownloadFile(c *gin.Context){
 		return
 	}
 
-		// Thiết lập tiêu đề của phản hồi HTTP
 		c.Writer.Header().Set("Content-Disposition", "attachment; filename="+body.FileName)
 		c.Writer.Header().Set("Content-Type", "application/octet-stream")
 
-		// Sao chép nội dung của đối tượng MinIO vào phản hồi HTTP
 		if _, err := io.Copy(c.Writer, file); err != nil {
 			log.Fatalln(err)
 		}
 }
 
-func PreviewFile(c *gin.Context){
+func PreviewImage(c *gin.Context){
 	userId,ok:=c.Get("user")
 		fmt.Println(ok)
 
@@ -199,10 +199,9 @@ func PreviewFile(c *gin.Context){
 		return
 	}
 
-	fileParam := c.Param("file")
+	fileParam := c.Param("image")
 
 	file,errGetFile := infrastructure.MinIOClient.GetObject(context.Background(), "file", fileParam, minio.GetObjectOptions{})
-
 
 	if errGetFile != nil {
 		log.Fatalln(errGetFile)
@@ -216,12 +215,23 @@ func PreviewFile(c *gin.Context){
 		return
 	}
 
-		// Thiết lập tiêu đề của phản hồi HTTP
-		c.Writer.Header().Set("Content-Disposition", "attachment; filename="+ fileParam)
-		c.Writer.Header().Set("Content-Type", "image/jpeg")
+	defer file.Close()
 
-		// Sao chép nội dung của đối tượng MinIO vào phản hồi HTTP
-		if _, err := io.Copy(c.Writer, file); err != nil {
-			log.Fatalln(err)
-		}
+	parts := strings.Split(fileParam, ".")
+	extension := parts[len(parts)-1]
+
+	mimeType := mime.TypeByExtension("." + extension)
+
+	c.Writer.Header().Set("Content-Disposition", "attachment; filename="+ fileParam)
+	c.Writer.Header().Set("Content-Type", mimeType)
+
+	if _, err := io.Copy(c.Writer, file); err != nil {
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "Can not fine file",
+				Data: nil,
+			},
+		})
+	}
 }

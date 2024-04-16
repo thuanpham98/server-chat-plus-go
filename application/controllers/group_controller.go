@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/rabbitmq/amqp091-go"
-	domain_auth_model "github.com/thuanpham98/go-websocker-server/domain/auth/model"
 	domain_chat_model "github.com/thuanpham98/go-websocker-server/domain/chat/model"
 	domain_common_model "github.com/thuanpham98/go-websocker-server/domain/common/model"
 	"github.com/thuanpham98/go-websocker-server/infrastructure"
@@ -60,87 +59,75 @@ func CreateGroup(c *gin.Context){
 }
 
 func ListenMessageFromGroup(c *gin.Context){
-	groupid:=c.Param("groupid")
-
-	retContext,okCheckUserId := c.Get("user")
-	if(!okCheckUserId){
-		c.JSON(http.StatusBadRequest,gin.H{
-			"error":"user not found",
+	// kiểm tra user và group có tồn tại hay không
+	groupId:=c.Param("groupid")
+	var group domain_chat_model.GroupEntity
+	infrastructure.DB.First(&group,"id = ?",groupId)
+	if(group.Id==""){
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 404,
+				Message: "group not found",
+				Data: nil,
+			},
 		})
 		return
 	}
-
+	retContext,okCheckUserId := c.Get("user")
+	if(!okCheckUserId){
+		c.JSON(http.StatusNotFound,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "group not found",
+				Data: nil,
+			},
+		})
+		return
+	}
 	userid:=retContext.(string)
 
-	// Upgrade HTTP connection to WebSocket
+	// upgrate lên websocket
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,
-		WriteBufferSize: 1024*512,
+		WriteBufferSize: 1024*1024,
 		CheckOrigin:func(r *http.Request) bool { return true } ,
 	}
-	websocketConnection, err := upgrader.Upgrade(c.Writer, c.Request, nil)
-
-	if err != nil {
-		fmt.Println("Failed to upgrade connection to WebSocket:", err)
+	wsConn, errUpgradeWs := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if errUpgradeWs != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errUpgradeWs)
 		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 400,
-			Message: "Can not connect websocket",
+			Message: "Không thể khởi tạo websocket",
 			Data: nil,
 		}})
 		return
 	}
+	defer wsConn.Close()
 	
 	// tạo channel để lắng nghe
-	// infrastructure.MutexMessageChannels.Lock()
-	var ch *amqp091.Channel
-	ch, ok := infrastructure.MessageChannels[groupid]
-	if !ok {
-		newCh, err := infrastructure.MessageQueueConntection.Channel()
-		if err != nil {
-			fmt.Println("Failed to upgrade connection to WebSocket:", err)
-			c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
-				Code: 400,
-				Message: "Can not connect websocket",
-				Data: nil,
-			}})
-			return
-		}
-		ch=newCh
-		infrastructure.MessageChannels[groupid]=ch
-	}
-	// infrastructure.MutexMessageChannels.Unlock()
-	
-    err = ch.ExchangeDeclare(
-            os.Getenv("EXCHANGE_NAME_CHAT_NEWS"), // Tên của exchange
-            "fanout",             // Loại của exchange
-            true,                 // Durable
-            false,                // Auto-deleted
-            false,                // Internal
-            false,                // No-wait
-            nil,                  // Arguments
-        )
-
-	if err != nil {
-		fmt.Println("Failed to upgrade connection to WebSocket:", err)
+	rabbChannel, errCreateChannel := infrastructure.MessageQueueConntection.Channel()
+	if errCreateChannel != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errCreateChannel)
 		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 400,
-			Message: "Can not connect websocket",
+			Message: "Không thể khởi tạo websocket",
 			Data: nil,
 		}})
 		return
 	}
+	defer rabbChannel.Close()
 
-    q, err := ch.QueueDeclare(
-        userid, // Tên hàng đợi
+	// khai báo queue
+    rabbQueue, errCreateQueue := rabbChannel.QueueDeclare(
+        userid+"-"+groupId, // Tên hàng đợi
         false,   // durable
         false,   // delete when unused
         false,   // exclusive
         false,   // no-wait
         nil,     // arguments
     )
-
-    if err != nil {
-		fmt.Println("Failed to upgrade connection to WebSocket:", err)
+    if errCreateQueue != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errCreateQueue)
 		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 400,
 			Message: "Can not connect websocket",
@@ -148,17 +135,18 @@ func ListenMessageFromGroup(c *gin.Context){
 		}})
 		return
 	}
+	defer rabbChannel.QueueDelete(rabbQueue.Name,false,false,true)
 
-     // Ràng buộc hàng đợi với exchange
-	err = ch.QueueBind(
-		q.Name,       // Tên của hàng đợi
+	// Ràng buộc hàng đợi với exchange
+	errBindingQueue := rabbChannel.QueueBind(
+		rabbQueue.Name,       // Tên của hàng đợi
 		"",           // Routing key
 		os.Getenv("EXCHANGE_NAME_CHAT_NEWS"), // Tên của exchange
 		false,        // No-wait
 		nil,          // Arguments
 	)
-	if err != nil {
-		fmt.Println("Failed to upgrade connection to WebSocket:", err)
+	if errBindingQueue != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errBindingQueue)
 		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 400,
 			Message: "Can not connect websocket",
@@ -166,9 +154,11 @@ func ListenMessageFromGroup(c *gin.Context){
 		}})
 		return
 	}
+	defer rabbChannel.QueueUnbind(rabbQueue.Name,"",os.Getenv("EXCHANGE_NAME_CHAT_NEWS"),amqp091.Table{})
 
-    msgs, err := ch.Consume(
-        q.Name, // queue
+	// khởi tạo consumer để lắng nghe message
+    rabbConsumer, errConsume := rabbChannel.Consume(
+        rabbQueue.Name, // queue
         "",     // consumer
         true,   // auto-ack
         false,  // exclusive
@@ -176,9 +166,8 @@ func ListenMessageFromGroup(c *gin.Context){
         false,  // no-wait
         nil,    // args
     )
-
-    if err != nil {
-		fmt.Println("Failed to upgrade connection to WebSocket:", err)
+    if errConsume != nil {
+		fmt.Printf("Failed to upgrade connection to WebSocket: %v", errConsume)
 		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 400,
 			Message: "Can not connect websocket",
@@ -188,19 +177,45 @@ func ListenMessageFromGroup(c *gin.Context){
 	}
 
 	userCh := make(chan []byte)
-
-	defer ch.Close()
-    defer delete(infrastructure.MessageChannels,groupid)
 	defer close(userCh)
-	defer websocketConnection.Close()
 
-	go readPump(websocketConnection)
+	closeCh := make(chan struct{})
 
-	go writePump(websocketConnection, userCh)
-	
-    for msg := range msgs {
-		userCh <- msg.Body
-	}
+	// Lắng nghe sự kiện từ amqp091.Delivery
+	go func() {
+		for delivery := range rabbConsumer {
+			// Xử lý dữ liệu từ AMQP và gửi qua WebSocket
+			errWriteMessage := wsConn.WriteMessage(websocket.BinaryMessage, delivery.Body)
+			if errWriteMessage != nil {
+				fmt.Printf("Failed to upgrade connection to WebSocket: %v", errWriteMessage)
+			}
+		}
+	}()
+
+	// Lắng nghe sự kiện từ WebSocket
+	go func() {
+		defer close(closeCh)
+		for {
+			_, _, err := wsConn.ReadMessage()
+			if err != nil {
+				if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+					fmt.Printf("WebSocket connection closed normally: %v", err)
+				} else {
+					fmt.Printf("Failed to read message from WebSocket: %v", err)
+				}
+				break // Thoát khỏi vòng lặp khi kết nối bị đóng
+			}
+		}
+	}()
+
+	// Đóng kết nối khi có sự kiện từ WebSocket hoặc AMQP
+	x, ok := <-closeCh
+	fmt.Printf("WebSocket connection closed %v %v",x,ok)
+
+	// select {
+	// 	case <-closeCh:
+	// 		fmt.Println("WebSocket connection closed")
+	// }
 }
 
 func SendMessageToGroup(c *gin.Context) {
@@ -229,15 +244,15 @@ func SendMessageToGroup(c *gin.Context) {
 	}
 	
 
-	receiverId:= message.Receiver
-	var user domain_auth_model.UserEntity
-	infrastructure.DB.First(&user,"id = ?",receiverId)
+	groupId:= message.Group.Id
+	var group domain_chat_model.GroupEntity
+	infrastructure.DB.First(&group,"id = ?",groupId)
 
-	if(user.Id==""){
+	if(group.Id==""){
 		c.JSON(http.StatusNotFound,gin.H{
 			"error": domain_common_model.CommonReponse{
 				Code: 404,
-				Message: "Can not find user",
+				Message: "Can not find group",
 				Data: nil,
 			},
 		})
@@ -261,7 +276,6 @@ func SendMessageToGroup(c *gin.Context) {
 	message_entity:=domain_chat_model.MessageEntity{
 		ID: uuid.New().String(),
 		Sender: senderId.(string),
-		Receiver: receiverId,
 		CreatedAt: time.Now().Format(time.RFC3339),
 		Group: domain_chat_model.GroupEntity{
 			Id: message.Group.Id,

@@ -22,11 +22,6 @@ func main() {
 
     defer infrastructure.MessageQueueConntection.Close()
 
-
-	// config for websocket 
-	// hub := chat.NewHub()
-	// go hub.Run()
-
 	//we need pass hub to out route with roomid
     gin.SetMode(os.Getenv("GIN_MODE"))
 	app := gin.Default()
@@ -51,18 +46,18 @@ func main() {
     message:= routerVersion.Group("/message")
     message.POST("/send",application_middlewares.ValidateTokenCoockie,application_controllers.SendMessageToFriend)
     message.POST("/list",application_middlewares.ValidateTokenCoockie,application_controllers.GetMessagePageAble)
+    message.POST("/send-to-group",application_middlewares.ValidateTokenCoockie,application_controllers.SendMessageToGroup)
 
     // group router
     group:= routerVersion.Group("/group")
     group.POST("/create",application_middlewares.ValidateTokenCoockie,application_controllers.CreateGroup)
-    group.POST("/send",application_middlewares.ValidateTokenCoockie,application_controllers.SendMessageToGroup)
 
 
     // storage router
     storage:=routerVersion.Group("/storage")
     storage.POST("/upload",application_middlewares.ValidateTokenCoockie,application_controllers.UploadFile)
     storage.POST("/download",application_middlewares.AuthRequire,application_controllers.DownloadFile)
-    storage.GET("/public/:file",application_middlewares.ValidateTokenCoockie,application_controllers.PreviewFile)
+    storage.GET("/public/image/:image",application_middlewares.ValidateTokenCoockie,application_controllers.PreviewImage)
 
 
     // websocket router
