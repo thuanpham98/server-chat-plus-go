@@ -45,8 +45,10 @@ func main() {
     // message router
     message:= routerVersion.Group("/message")
     message.POST("/send",application_middlewares.ValidateTokenCoockie,application_controllers.SendMessageToFriend)
-    message.POST("/list",application_middlewares.ValidateTokenCoockie,application_controllers.GetMessagePageAble)
     message.POST("/send-to-group",application_middlewares.ValidateTokenCoockie,application_controllers.SendMessageToGroup)
+    message.POST("/list",application_middlewares.ValidateTokenCoockie,application_controllers.GetMessagePageAble)
+    message.POST("/delete",application_middlewares.ValidateTokenCoockie,application_controllers.DeleteMessage)
+
 
     // group router
     group:= routerVersion.Group("/group")

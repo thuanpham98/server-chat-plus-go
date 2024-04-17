@@ -393,3 +393,47 @@ func GetMessagePageAble(c *gin.Context){
 		Message: "success",
 	}})
 }
+
+func DeleteMessage(c *gin.Context){
+	userId,ok:=c.Get("user")
+	if(!ok||userId==""){
+		c.JSON(http.StatusBadRequest,gin.H{
+			"error": domain_common_model.CommonReponse{
+				Code: 105,
+				Message: "user not found",
+				Data: nil,
+			},
+		})
+		return
+	}
+
+	var body struct{
+		Id string `json:"id" binding:"required"`
+	}
+
+	if(c.Bind(&body) !=nil){
+		c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not read body",
+			Data: nil,
+		}})
+		return
+	}
+
+
+    if err:= infrastructure.DB.Exec("DELETE FROM public.message_entities WHERE id = ?",body.Id).Error; err != nil {
+        c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+			Code: 400,
+			Message: "Can not get data",
+			Data: nil,
+		}})
+		return
+    }
+
+	
+	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
+		Data: true,
+		Code: 0,
+		Message: "success",
+	}})
+}
