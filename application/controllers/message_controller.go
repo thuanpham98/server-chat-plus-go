@@ -356,7 +356,7 @@ func GetMessagePageAble(c *gin.Context){
 	var offset int = (body.Page) * body.PageSize
 
 	var messages []domain_chat_model.MessageEntity
-    if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities WHERE sender = ? AND receiver = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",userId, body.Receiver ,body.PageSize, offset).Scan(&messages).Error; err != nil {
+    if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?) ORDER BY created_at DESC LIMIT ? OFFSET ?",userId, body.Receiver,body.Receiver, userId ,body.PageSize, offset).Scan(&messages).Error; err != nil {
         c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
 			Code: 400,
 			Message: "Can not get data",
