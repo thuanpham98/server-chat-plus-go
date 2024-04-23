@@ -1,8 +1,10 @@
+#### .env
+
 ```
 PORT=6969
-DBCONFIG="host=localhost user=postgres password=1 dbname=postgres port=5432 sslmode=disable TimeZone=Asia/Bangkok"
+DBCONFIG="host=localhost user=postgres password=1 dbname=postgres port=2345 sslmode=disable TimeZone=Asia/Bangkok"
 RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
-GIN_MODE=debug
+GIN_MODE=release
 # release
 # debug
 PASSWORD_HASH_SECRET_KEY=ahihi
@@ -15,12 +17,17 @@ EXCHANGE_NAME_CHAT_POINT_TO_POINT="amq.direct"
 EXCHANGE_NAME_CHAT_NEWS="amq.fanout"
 ```
 
+#### run : chane GIN_MODE=release
+
+- copy env above into .env
+- go run main.go
+
+#### generate protobuf message
+
 ```
 protoc --proto_path=infrastructure/protobuf --go_out=infrastructure infrastructure/protobuf/message.proto
 ```
 
-build
+#### build
 
-```
-go build -o bin/chat-app && cp .env bin
-```
+- go build -o bin/chat-app && cp .env bin
