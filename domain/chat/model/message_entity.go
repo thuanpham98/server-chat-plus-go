@@ -9,7 +9,7 @@ import (
 
 type MessageEntity struct{
 	ID string `gorm:"type:uuid;primary_key"`
-	CreatedAt string `gorm:"index:create_at"`
+	CreatedAt time.Time `gorm:"index:create_at"`
     UpdatedAt time.Time
     DeletedAt gorm.DeletedAt
 	Sender string

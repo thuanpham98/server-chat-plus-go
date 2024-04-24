@@ -2,6 +2,7 @@ package application_controllers
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net/http"
@@ -79,7 +80,6 @@ func SendMessageToFriend(c *gin.Context) {
 		ID: uuid.New().String(),
 		Sender: senderId.(string),
 		Receiver: receiverId,
-		CreatedAt: time.Now().Format(time.RFC3339),
 		Group: domain_chat_model.GroupEntity{},
 		Content: message.Content,
 		Type: domain_chat_model.MessageType(message.Type),
@@ -125,7 +125,7 @@ func SendMessageToFriend(c *gin.Context) {
 		Receiver: message_entity.Receiver,
 		Group: message.Group,
 		Type: message.Type,
-		CreateAt: message_entity.CreatedAt,
+		CreateAt: message_entity.CreatedAt.Format(time.RFC3339),
 		Content: message_entity.Content,
 	})
 
@@ -296,11 +296,44 @@ func ListenMessageForUser(c *gin.Context){
 	// Lắng nghe sự kiện từ amqp091.Delivery
 	go func() {
 		for delivery := range rabbConsumer {
-			// Xử lý dữ liệu từ AMQP và gửi qua WebSocket
-			errWriteMessage := wsConn.WriteMessage(websocket.BinaryMessage, delivery.Body)
-			if errWriteMessage != nil {
-				fmt.Printf("Failed to write WebSocket: %v", errWriteMessage)
+			headerFrame:= make([]byte, 6)
+			headerFrame[0]=0x00;//opcode
+			headerFrame[1]=0x00;//opcode
+			headerFrame[2]=0x00;//byte length
+			headerFrame[3]=0x00;//byte length
+			headerFrame[4]=0x00;//byte length
+			headerFrame[5]=0x00;//byte length
+
+			var sizeFrameBase  = 512;
+			var totalSize  = (len(delivery.Body))
+		
+			numFrames := totalSize / sizeFrameBase
+			if totalSize%sizeFrameBase != 0 {
+				numFrames++
 			}
+
+			for i := 0; i < numFrames; i++ {
+				sizeFrame :=sizeFrameBase
+				if(i+1>=numFrames){ // frame cuối
+					headerFrame[0]=0x80;
+					sizeFrame=len(delivery.Body)-i*sizeFrameBase
+
+				}else{
+					headerFrame[0]=0x00;
+				}
+
+				binary.BigEndian.PutUint32(headerFrame[2:6],uint32(sizeFrame))
+				bodyFrame :=delivery.Body[i*sizeFrameBase: i*sizeFrameBase+sizeFrame]
+				data:= append(headerFrame,bodyFrame...)
+
+				errWriteMessage := wsConn.WriteMessage(websocket.BinaryMessage,data )
+				if errWriteMessage != nil {
+					fmt.Printf("Failed to write WebSocket: %v", errWriteMessage)
+					wsConn.WriteMessage(websocket.BinaryMessage,data )
+				}
+				// Xử lý dữ liệu từ AMQP và gửi qua WebSocket
+			}
+			
 		}
 	}()
 
@@ -342,6 +375,8 @@ func GetMessagePageAble(c *gin.Context){
 		Page int `json:"page"`
 		PageSize int `json:"page_size"`
 		Receiver string `json:"receiver"`
+		From string `json:"from"`
+		To string `json:"to"`
 	}
 
 	if(c.Bind(&body) !=nil){
@@ -350,23 +385,36 @@ func GetMessagePageAble(c *gin.Context){
 			Message: "Can not read body",
 			Data: nil,
 		}})
-		return
+		return 
 	}
 
-	var offset int = (body.Page) * body.PageSize
-
 	var messages []domain_chat_model.MessageEntity
-    if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?) ORDER BY created_at DESC LIMIT ? OFFSET ?",userId, body.Receiver,body.Receiver, userId ,body.PageSize, offset).Scan(&messages).Error; err != nil {
-        c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
-			Code: 400,
-			Message: "Can not get data",
-			Data: nil,
-		}})
-		return
-    }
+
+	var offset int = (body.Page) * body.PageSize
+	startTime, errParseStartTime := time.Parse(time.RFC3339, body.From)
+	endTime, errParseEndTime := time.Parse(time.RFC3339, body.To)
+	if errParseEndTime != nil || errParseStartTime!=nil {
+		fmt.Println("1 trong 2 sai")
+		if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities WHERE (sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?) ORDER BY created_at DESC LIMIT ? OFFSET ?",userId, body.Receiver,body.Receiver, userId ,body.PageSize, offset).Scan(&messages).Error; err != nil {
+			c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+				Code: 400,
+				Message: "Can not get data",
+				Data: nil,
+			}})
+			return
+		}
+	}else{
+		if err:= infrastructure.DB.Raw("SELECT * FROM public.message_entities WHERE (created_at BETWEEN ? AND ?) AND ((sender = ? AND receiver = ?) OR (sender = ? AND receiver = ?)) ORDER BY created_at DESC LIMIT ? OFFSET ?",startTime,endTime,userId, body.Receiver,body.Receiver, userId ,body.PageSize, offset).Scan(&messages).Error; err != nil {
+			c.JSON(http.StatusBadRequest,gin.H{"data": domain_common_model.CommonReponse{
+				Code: 400,
+				Message: "Can not get data",
+				Data: nil,
+			}})
+			return
+		}
+	}
 
 	var dtos []domain_chat_model.MessageDTO
-
 	for i := len(messages) - 1; i >= 0; i-- {
 		dto := domain_chat_model.MessageDTO{
 			Id: messages[i].ID,
@@ -376,7 +424,7 @@ func GetMessagePageAble(c *gin.Context){
 				Id: messages[i].Group.Id,
 				Name: messages[i].Group.Name,
 			},
-			CreateAt: messages[i].CreatedAt,
+			CreateAt: messages[i].CreatedAt.Format(time.RFC3339),
 			Content: messages[i].Content,
 			Type: messages[i].Type,
         }
