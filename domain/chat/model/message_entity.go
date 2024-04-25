@@ -15,6 +15,6 @@ type MessageEntity struct{
 	Sender string
 	Receiver string
 	Type MessageType
-	Group GroupEntity `gorm:"foreignkey:Id"`
+	GroupId string
 	Content string
 }

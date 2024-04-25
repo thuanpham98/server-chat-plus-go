@@ -80,9 +80,9 @@ func SendMessageToFriend(c *gin.Context) {
 		ID: uuid.New().String(),
 		Sender: senderId.(string),
 		Receiver: receiverId,
-		Group: domain_chat_model.GroupEntity{},
 		Content: message.Content,
 		Type: domain_chat_model.MessageType(message.Type),
+		GroupId: "",
 	}
 	result:=infrastructure.DB.Create(&message_entity)
 
@@ -421,8 +421,7 @@ func GetMessagePageAble(c *gin.Context){
 			Sender: messages[i].Sender,
 			Receiver: messages[i].Receiver,
 			Group: domain_chat_model.GroupDTO{
-				Id: messages[i].Group.Id,
-				Name: messages[i].Group.Name,
+				Id: messages[i].GroupId,
 			},
 			CreateAt: messages[i].CreatedAt.Format(time.RFC3339),
 			Content: messages[i].Content,

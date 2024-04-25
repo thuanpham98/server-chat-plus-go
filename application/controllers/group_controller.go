@@ -270,10 +270,7 @@ func SendMessageToGroup(c *gin.Context) {
 	message_entity:=domain_chat_model.MessageEntity{
 		ID: uuid.New().String(),
 		Sender: senderId.(string),
-		Group: domain_chat_model.GroupEntity{
-			Id: message.Group.Id,
-			Name: message.Group.Name,
-		},
+		GroupId: message.Group.Id,
 		Content: message.Content,
 		Type: domain_chat_model.MessageType(message.Type),
 	}

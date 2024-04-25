@@ -43,7 +43,6 @@ func SignUp(c *gin.Context){
 		Email: body.Email,
 		Phone: body.Phone,
 		Password: string(hashed),
-
 	}
 	result:=infrastructure.DB.Create(&user)
 
