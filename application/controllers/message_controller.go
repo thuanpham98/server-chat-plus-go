@@ -423,16 +423,12 @@ func GetMessagePageAble(c *gin.Context){
 			Group: domain_chat_model.GroupDTO{
 				Id: messages[i].GroupId,
 			},
-			CreateAt: messages[i].CreatedAt.Format(time.RFC3339),
+			CreateAt: messages[i].CreatedAt.Format(time.RFC3339Nano),
 			Content: messages[i].Content,
 			Type: messages[i].Type,
         }
         dtos = append(dtos, dto)
 	}
-
-    // for _, mess := range messages {
-       
-    // }
 	
 	c.JSON(http.StatusOK,gin.H{"data": domain_common_model.CommonReponse{
 		Data: dtos,
